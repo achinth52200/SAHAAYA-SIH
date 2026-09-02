@@ -1,0 +1,96 @@
+# SAHAAYA .gitignore
+
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+.nyc_output/
+coverage/
+
+# Docker
+docker-compose.override.yml
+
+# Database
+*.sqlite
+*.db
+
+# Secrets
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# ML Models
+*.pt
+*.pth
+*.h5
+*.joblib
+*.pkl
+models/
+*.bin
+
+# Data
+data/
+*.csv
+*.jsonl
+!data/.gitkeep
+
+# Flutter
+.dart_tool/
+.packages
+build/
+*.dart.js
+*.js.map
+
+# Next.js
+.next/
+out/
+*.tsbuildinfo
+
+# Turbo
+.turbo/
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+
+# Environment files (keep .env.example)
+.env
+.env.production
+.env.staging

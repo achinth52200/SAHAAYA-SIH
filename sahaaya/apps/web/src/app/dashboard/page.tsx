@@ -1,0 +1,294 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+import Link from 'next/link';
+import {
+  AlertTriangle,
+  Users,
+  TrendingUp,
+  Clock,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus,
+  ExternalLink,
+  RefreshCw,
+  Filter,
+  MoreVertical,
+  User,
+} from 'lucide-react';
+import { Button } from '@/components/ui';
+import { api } from '@/lib/api';
+import { useAuthStore, useDashboardStore, useAlertStore } from '@/lib/store';
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  Badge, StatusBadge, PriorityBadge, DistressBandBadge
+} from '@/components/ui';
+import { RadialDistressGauge } from '@/components/charts/RadialDistressGauge';
+import { cn, formatRelativeTime } from '@/lib/utils';
+import type { Alert, DashboardStats, VictimSummary } from '@/types';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+};
+
+const statCards = [
+  { name: 'Total Alerts', key: 'total', icon: AlertTriangle, color: 'text-primary-500', bg: 'bg-primary-50' },
+  { name: 'Pending Review', key: 'pending_review', icon: Clock, color: 'text-distress-yellow', bg: 'bg-distress-yellow/10' },
+  { name: 'High Priority', key: 'high', icon: ArrowUpRight, color: 'text-distress-orange', bg: 'bg-distress-orange/10' },
+  { name: 'Resolved Today', key: 'resolved', icon: ArrowDownRight, color: 'text-distress-green', bg: 'bg-distress-green/10' },
+];
+
+export default function DashboardOverview() {
+  const { user } = useAuthStore();
+  const { stats, setStats, isLoading: statsLoading, setLoading } = useDashboardStore();
+  const { alerts, setAlerts, isLoading: alertsLoading } = useAlertStore();
+  const [recentAlerts, setRecentAlerts] = useState<Alert[]>([]);
+  const [recentVictims, setRecentVictims] = useState<VictimSummary[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [statsRes, alertsRes] = await Promise.all([
+        api.getReviewSummary(),
+        api.getReviewAlerts({ limit: 10 }),
+      ]);
+      setStats(statsRes.data);
+      setAlerts(alertsRes.data);
+      setRecentAlerts(alertsRes.data.slice(0, 5));
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadData();
+    setIsRefreshing(false);
+  };
+
+  const getStatValue = (key: string) => {
+    if (!stats) return '—';
+    switch (key) {
+      case 'total': return stats.alerts.total;
+      case 'pending_review': return stats.alerts.pending_review;
+      case 'high': return stats.alerts.by_priority.high + stats.alerts.by_priority.critical;
+      case 'resolved': return stats.alerts.by_status.resolved || 0;
+      default: return '—';
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <motion.div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4" variants={itemVariants}>
+        <div>
+          <h1 className="text-display-sm font-heading font-bold text-text-primary">
+            Welcome back, {user?.name?.split(' ')[0] || 'Officer'}
+          </h1>
+          <p className="text-body text-text-secondary mt-1">
+            Here's what's happening with your cases today.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={handleRefresh} loading={isRefreshing}>
+            <RefreshCw className={cn('w-4 h-4', isRefreshing && 'animate-spin')} />
+            Refresh
+          </Button>
+        </div>
+      </motion.div>
+
+      {/* Stats Grid */}
+      <motion.div
+        className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {statCards.map((stat, i) => (
+          <motion.div key={stat.key} variants={itemVariants}>
+            <Card padding="md" className="h-full">
+              <CardContent className="flex items-start justify-between">
+                <div>
+                  <p className="text-body-sm text-text-secondary">{stat.name}</p>
+                  <p className="text-display-sm font-heading font-bold text-text-primary mt-1">
+                    {getStatValue(stat.key)}
+                  </p>
+                </div>
+                <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center', stat.bg)}>
+                  <stat.icon className={cn('w-6 h-6', stat.color)} />
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ))}
+      </motion.div>
+
+      {/* Quick Actions & Recent Alerts */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Quick Actions */}
+        <motion.section className="lg:col-span-1" variants={itemVariants}>
+          <Card padding="md">
+            <CardHeader>
+              <CardTitle>Quick Actions</CardTitle>
+              <CardDescription>Common tasks for your role</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link href="/dashboard/alerts" className="block">
+                <Button variant="secondary" fullWidth leftIcon={<AlertTriangle className="w-4 h-4" />}>
+                  Review New Alerts
+                </Button>
+              </Link>
+              <Link href="/dashboard/victims" className="block">
+                <Button variant="outline" fullWidth leftIcon={<Users className="w-4 h-4" />}>
+                  View All Victims
+                </Button>
+              </Link>
+              <Link href="/dashboard/analytics" className="block">
+                <Button variant="outline" fullWidth leftIcon={<TrendingUp className="w-4 h-4" />}>
+                  View Analytics
+                </Button>
+              </Link>
+              <Button variant="ghost" fullWidth leftIcon={<RefreshCw className="w-4 h-4" />} onClick={handleRefresh} loading={isRefreshing}>
+                Refresh Data
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.section>
+
+        {/* Recent Alerts */}
+        <motion.section className="lg:col-span-2" variants={itemVariants}>
+          <Card padding="none">
+            <CardHeader className="px-6 py-4 border-b border-border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Recent Alerts</CardTitle>
+                  <CardDescription>Latest distress alerts requiring attention</CardDescription>
+                </div>
+                <Link href="/dashboard/alerts" className="text-body-sm text-primary-500 hover:text-primary-600 flex items-center gap-1">
+                  View All <ExternalLink className="w-4 h-4" />
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {recentAlerts.length === 0 && !alertsLoading ? (
+                <div className="p-6 text-center text-text-muted">
+                  <AlertTriangle className="w-12 h-12 mx-auto text-border mb-3" />
+                  <p className="text-body">No recent alerts</p>
+                  <p className="text-body-sm mt-1">Generate alerts from the Alerts page</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {recentAlerts.map((alert, i) => (
+                    <motion.div
+                      key={alert.alert_id}
+                      className="p-4 hover:bg-secondary-50 transition-colors"
+                      variants={itemVariants}
+                      transition={{ delay: i * 0.05 }}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-2">
+                            <DistressBandBadge band={alert.band as any} showScore={alert.distress_score} />
+                            <PriorityBadge priority={alert.priority} size="sm" />
+                            <StatusBadge status={alert.status} size="sm" />
+                          </div>
+                          <p className="text-body-sm text-text-secondary truncate">{alert.victim_id} • {alert.narrative}</p>
+                          <div className="flex items-center gap-3 mt-2 text-caption text-text-muted">
+                            <span>{formatRelativeTime(alert.created_at)}</span>
+                            {alert.assigned_to && (
+                              <span className="flex items-center gap-1">
+                                <User className="w-3 h-3" /> {alert.assigned_to}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <Link href={`/dashboard/alerts/${alert.alert_id}`}>
+                            <Button variant="ghost" size="sm">View</Button>
+                          </Link>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.section>
+      </div>
+
+      {/* High Risk Victims */}
+      <motion.section variants={itemVariants}>
+        <Card padding="none">
+          <CardHeader className="px-6 py-4 border-b border-border">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>High Risk Victims</CardTitle>
+                <CardDescription>Victims with Orange/Red distress bands requiring immediate attention</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="table-container">
+              <table className="table" role="table">
+                <thead>
+                  <tr>
+                    <th scope="col">Victim ID</th>
+                    <th scope="col">Case Type</th>
+                    <th scope="col">District</th>
+                    <th scope="col" className="w-16">Score</th>
+                    <th scope="col">Band</th>
+                    <th scope="col">Trend</th>
+                    <th scope="col">7-day Risk</th>
+                    <th scope="col">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentAlerts
+                    .filter(a => a.band === 'Orange' || a.band === 'Red')
+                    .slice(0, 10)
+                    .map((alert) => (
+                      <tr key={alert.alert_id}>
+                        <td className="font-mono text-body-sm">{alert.victim_id}</td>
+                        <td>—</td>
+                        <td>—</td>
+                        <td>
+                          <RadialDistressGauge score={alert.distress_score} band={alert.band} size="xs" />
+                        </td>
+                        <td><DistressBandBadge band={alert.band as any} size="sm" /></td>
+                        <td>
+                          <Badge variant={alert.trend_direction === 'worsening' ? 'red' : alert.trend_direction === 'improving' ? 'green' : 'gray'} size="sm">
+                            {alert.trend_direction}
+                          </Badge>
+                        </td>
+                        <td>{Math.round(alert.escalation_probability_7d * 100)}%</td>
+                        <td>
+                          <Link href={`/dashboard/alerts/${alert.alert_id}`}>
+                            <Button variant="ghost" size="sm">Review</Button>
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.section>
+    </div>
+  );
+}

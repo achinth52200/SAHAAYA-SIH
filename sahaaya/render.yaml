@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: sahaaya-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.api
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false
+      - key: NODE_ENV
+        value: production
