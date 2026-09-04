@@ -1,19 +1,2 @@
-# Dependencies for the Vercel Python function in api/index.py, which serves the
-# real gateway (distress engine + explainability + emotion classifier).
-#
-# Previously this listed only fastapi and pydantic, because the function was a stub
-# that fabricated scores. Running the actual pipeline needs the scoring stack.
-#
-# xgboost is required even though every `import xgboost` in the source is wrapped in
-# try/except with an XGB_AVAILABLE fallback: the saved classifier is itself an
-# xgboost.sklearn.XGBClassifier, so joblib.load() imports the module while
-# unpickling. Without it the API fails at startup with ModuleNotFoundError.
-
 fastapi>=0.104.0
 pydantic>=2.5.0
-
-joblib>=1.3.0
-numpy>=1.24.0
-pandas>=2.0.0
-scikit-learn>=1.3.0
-xgboost>=2.0.0
