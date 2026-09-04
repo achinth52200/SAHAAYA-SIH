@@ -48,16 +48,25 @@ export default function VictimsPage() {
     if (data.length === 0 || Object.keys(detail).length >= data.length) return;
     setEnriching(true);
     try {
-      const entries = await Promise.all(
-        data.map(async (v) => {
-          try {
-            const res = await api.getVictimDistress(v.victim_id);
-            return [v.victim_id, res.data] as const;
-          } catch {
-            return [v.victim_id, null] as const;
-          }
-        }),
-      );
+      // Fetched in bounded batches rather than one Promise.all over the whole
+      // caseload: with a national cohort this is hundreds of requests, and firing
+      // them at once just queues them behind the browser's per-host connection
+      // limit while risking a rate limit at the gateway.
+      const BATCH = 8;
+      const entries: (readonly [string, any])[] = [];
+      for (let i = 0; i < data.length; i += BATCH) {
+        const batch = await Promise.all(
+          data.slice(i, i + BATCH).map(async (v) => {
+            try {
+              const res = await api.getVictimDistress(v.victim_id);
+              return [v.victim_id, res.data] as const;
+            } catch {
+              return [v.victim_id, null] as const;
+            }
+          }),
+        );
+        entries.push(...batch);
+      }
       setDetail(Object.fromEntries(entries));
     } finally {
       setEnriching(false);

@@ -148,8 +148,17 @@ class DistressEngine:
         )
         # Convert to distress (0-100)
         distress = 100 - well_being
-        # Urgent help flag adds significant distress
-        if scores.get("urgent_help", 0) == 1:
+        # Urgent help flag adds significant distress.
+        # Treated as truthy rather than compared to exactly 1: the flag arrives from
+        # several channels (app, chatbot, SMS, IVRS) and any of them could deliver it
+        # as true, "1", or a count of requests. Dropping an explicit request for
+        # urgent help because it did not equal the integer 1 is the most costly
+        # failure this component can have, so the comparison is deliberately lenient.
+        try:
+            urgent = float(scores.get("urgent_help", 0) or 0)
+        except (TypeError, ValueError):
+            urgent = 0.0
+        if urgent >= 1:
             distress = min(100, distress + 30)
         return max(0, min(100, distress))
     
