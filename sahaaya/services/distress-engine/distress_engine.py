@@ -169,10 +169,21 @@ class DistressEngine:
         return max(0, min(100, avg_distress))
     
     def compute_behavioural_score(self, patterns: List[Dict]) -> float:
-        """Compute behavioural pattern change component (0-100)"""
+        """
+        Compute behavioural pattern change component (0-100).
+
+        Behavioural disengagement is measured on two axes:
+          * intensity  - how severe the concerning patterns are when they occur
+          * frequency  - what share of the observation window is concerning
+
+        Averaging severity across every observation (including "normal" days) meant a
+        window that is mostly normal drove the component toward zero no matter how
+        severe the concerning days were, so this component could never meaningfully
+        rise. Normal days now set the frequency denominator instead of diluting severity.
+        """
         if not patterns:
             return 0.0
-        
+
         severity_map = {
             "missed_checkin": 25,
             "cancelled_counselling": 30,
@@ -180,12 +191,25 @@ class DistressEngine:
             "late_response": 15,
             "normal": 0,
         }
-        
-        total = sum(severity_map.get(p.get("pattern_type", "normal"), 0) * p.get("severity", 1) 
-                   for p in patterns)
-        # Normalize by number of periods
-        avg = total / max(len(patterns), 1)
-        return max(0, min(100, avg))
+        # Worst single observation: cancelled counselling at severity 3.
+        max_observation = 30 * 3
+
+        concerning = [
+            p for p in patterns
+            if severity_map.get(p.get("pattern_type", "normal"), 0) > 0
+        ]
+        if not concerning:
+            return 0.0
+
+        weighted = [
+            severity_map.get(p.get("pattern_type", "normal"), 0) * max(p.get("severity", 1), 1)
+            for p in concerning
+        ]
+        intensity = (sum(weighted) / len(weighted)) / max_observation * 100
+        frequency = len(concerning) / len(patterns) * 100
+
+        score = 0.6 * intensity + 0.4 * frequency
+        return max(0.0, min(100.0, score))
     
     def compute_voice_score(self, voice_features: List[Dict]) -> float:
         """Compute voice-based supporting indicators component (0-100)"""
@@ -206,12 +230,48 @@ class DistressEngine:
         return max(0, min(100, total))
     
     def compute_case_events_score(self, case_events: List[Dict]) -> float:
-        """Compute case & external stress events component (0-100)"""
+        """
+        Compute case & external stress events component (0-100).
+
+        Events carry a signed stress_impact: a threat or an adjournment adds stress,
+        while compensation or an assigned counsellor relieves it. Summing raw impact
+        across the whole case history meant a victim with a few stressful events
+        saturated at the 100 cap, while one whose positive and negative events roughly
+        cancelled was clamped to a flat 0 - neither reflecting how recent the events
+        were.
+
+        Impact is now decayed with a 30-day half-life, so an adjournment last week
+        weighs far more than a hearing three months ago, and the component keeps
+        moving as a case progresses.
+        """
         if not case_events:
             return 0.0
-        
-        total_impact = sum(e.get("stress_impact", 0) for e in case_events)
-        return max(0, min(100, total_impact))
+
+        def parsed(event):
+            ts = event.get("event_date")
+            if isinstance(ts, str):
+                try:
+                    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                except ValueError:
+                    return None
+            return ts if isinstance(ts, datetime) else None
+
+        dated = [(parsed(e), e.get("stress_impact", 0)) for e in case_events]
+        dated = [(ts, impact) for ts, impact in dated if ts is not None]
+        if not dated:
+            # No usable timestamps - fall back to an undecayed sum.
+            return max(0.0, min(100.0, float(sum(e.get("stress_impact", 0) for e in case_events))))
+
+        # Decay relative to the most recent event in the window.
+        reference = max(ts for ts, _ in dated)
+        half_life_days = 30.0
+
+        decayed = 0.0
+        for ts, impact in dated:
+            age_days = max((reference - ts).days, 0)
+            decayed += impact * (0.5 ** (age_days / half_life_days))
+
+        return max(0.0, min(100.0, decayed))
     
     def compute_trend_score(self, victim_id: str, historical_scores: List[float]) -> float:
         """Compute longitudinal distress trend component (0-100)"""

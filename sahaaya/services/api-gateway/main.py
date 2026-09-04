@@ -315,15 +315,20 @@ def compute_latest_distress(victim_id: str) -> DistressScoreResult:
     week_texts = [t for t in text_interactions if parse_ts(t["timestamp"]) <= week_cutoff]
     week_voice = [v for v in voice_features if parse_ts(v["timestamp"]) <= week_cutoff]
     week_behaviour = [b for b in behavioural if parse_ts(b["date"]) <= week_cutoff]
-    week_events = [e for e in case_events if parse_ts(e["event_date"]) <= week_cutoff]
-    
+
+    # Historical points are cut off at their own check-in to avoid look-ahead leakage,
+    # but the *current* score should reflect everything known today. Case events keep
+    # arriving after a victim's last check-in (hearings, compensation, protection
+    # orders), and truncating them made the live score blind to the most recent case
+    # activity. The engine's recency decay already weights older events down.
+
     return app_state.distress_engine.compute_distress_score(
         victim_id=victim_id,
         checkin=latest_checkin,
         text_interactions=week_texts[-10:],
         behavioural_patterns=week_behaviour[-10:],
         voice_features=week_voice[-5:],
-        case_events=week_events,
+        case_events=case_events,
         historical_scores=historical_scores,
         emotion_model=app_state.emotion_model,
     )

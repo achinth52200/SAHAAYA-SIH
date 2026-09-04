@@ -286,9 +286,16 @@ class ExplainabilityEngine:
         # Sort by absolute contribution
         all_factors.sort(key=lambda f: abs(f.contribution), reverse=True)
         
-        # Categorize factors
+        # Categorize factors.
+        # Secondary is "everything else that still matters", not just the 1.0-5.0 band:
+        # a factor scoring above 5.0 but ranked outside the top three used to match
+        # neither list and disappeared from the explanation altogether.
         primary_factors = [f for f in all_factors if abs(f.contribution) >= 5.0][:3]
-        secondary_factors = [f for f in all_factors if 1.0 <= abs(f.contribution) < 5.0]
+        primary_ids = {id(f) for f in primary_factors}
+        secondary_factors = [
+            f for f in all_factors
+            if id(f) not in primary_ids and abs(f.contribution) >= 1.0
+        ]
         risk_factors = [f for f in all_factors if f.direction == "increasing" and f.contribution > 1.0]
         protective_factors = [f for f in all_factors if f.direction == "decreasing" or f.contribution < -1.0]
         
