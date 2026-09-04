@@ -21,6 +21,9 @@ import {
   Button, Input, Select,
 } from '@/components/ui';
 import { cn, formatRelativeTime } from '@/lib/utils';
+import { useAuthStore } from '@/lib/store';
+import { ExportDialog } from '@/components/ExportDialog';
+import type { CsvColumn } from '@/lib/export';
 import type { DistrictDashboard } from '@/types';
 
 interface DistrictSummary {
@@ -34,6 +37,8 @@ interface DistrictSummary {
 
 export default function DistrictsPage() {
   const [data, setData] = useState<DistrictSummary[]>([]);
+  const [exportOpen, setExportOpen] = useState(false);
+  const { user } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterState, setFilterState] = useState<string>('');
@@ -98,6 +103,31 @@ export default function DistrictsPage() {
 
   const states = Array.from(new Set(data.map(d => d.state))).sort();
 
+  const share = (count: number, total: number) => (total > 0 ? Math.round((count / total) * 100) : 0);
+
+  /** Every district-level parameter the console holds, grouped for selective export. */
+  const districtColumns: CsvColumn<DistrictSummary>[] = [
+    { group: 'Location', header: 'District', value: (d) => d.district },
+    { group: 'Location', header: 'State', value: (d) => d.state },
+    { group: 'Caseload', header: 'Total Victims', value: (d) => d.total_victims },
+    { group: 'Band Counts', header: 'Green (Stable)', value: (d) => d.band_distribution.Green },
+    { group: 'Band Counts', header: 'Yellow (Mild)', value: (d) => d.band_distribution.Yellow },
+    { group: 'Band Counts', header: 'Orange (Significant)', value: (d) => d.band_distribution.Orange },
+    { group: 'Band Counts', header: 'Red (Urgent)', value: (d) => d.band_distribution.Red },
+    { group: 'Band Share', header: 'Green %', value: (d) => share(d.band_distribution.Green, d.total_victims) },
+    { group: 'Band Share', header: 'Yellow %', value: (d) => share(d.band_distribution.Yellow, d.total_victims) },
+    { group: 'Band Share', header: 'Orange %', value: (d) => share(d.band_distribution.Orange, d.total_victims) },
+    { group: 'Band Share', header: 'Red %', value: (d) => share(d.band_distribution.Red, d.total_victims) },
+    { group: 'Risk', header: 'High Risk Count', value: (d) => d.high_risk_count },
+    { group: 'Risk', header: 'High Risk %', value: (d) => d.high_risk_percentage },
+    {
+      group: 'Risk',
+      header: 'Requires Human Review',
+      value: (d) => (d.high_risk_count > 0 ? 'Yes' : 'No'),
+    },
+    { group: 'Provenance', header: 'Data Classification', value: () => 'PROTOTYPE DATA — NOT REAL VICTIM DATA' },
+  ];
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -125,9 +155,26 @@ export default function DistrictsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" leftIcon={<Download className="w-4 h-4" />}>Export CSV</Button>
+          <Button variant="outline" onClick={() => setExportOpen(true)} leftIcon={<Download className="w-4 h-4" />}>
+            Export CSV
+          </Button>
         </div>
       </motion.div>
+
+      <ExportDialog
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        filteredRows={filteredDistricts}
+        allRows={data}
+        columns={districtColumns}
+        baseName="districts"
+        title="District-wise distress distribution"
+        filterSummary={
+          [search ? `search "${search}"` : null, filterState ? `state ${filterState}` : null]
+            .filter(Boolean).join(', ') || 'No filters applied'
+        }
+        exportedBy={user ? `${user.name} (${user.role})` : undefined}
+      />
 
       {/* Filters */}
       <motion.section className="card p-4" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
