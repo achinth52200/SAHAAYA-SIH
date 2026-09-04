@@ -50,9 +50,9 @@ BEHAVIOURAL_PATTERNS = [
 # Every district belongs to exactly one state. Drawing district and state
 # independently used to put the same district name under several states, which
 # broke aggregation (and React keys) in the console.
-STATES = [f"State_{i}" for i in range(1, 6)]
+STATES = [f"State_{i}" for i in range(1, 4)]
 DISTRICTS_BY_STATE = {
-    state: [f"District_{state.split('_')[1]}{j:02d}" for j in range(1, 5)]
+    state: [f"District_{state.split('_')[1]}{j:02d}" for j in range(1, 3)]
     for state in STATES
 }
 
@@ -73,7 +73,7 @@ DISTRICTS_BY_STATE = {
 # ---------------------------------------------------------------------------
 RISK_PROFILES = {
     "stable": {
-        "share": 0.22,
+        "share": 0.17,
         "self_report": {
             "mood": (80, 94), "anxiety_stress": (6, 18), "sleep_quality": (78, 92),
             "safety": (86, 98), "hopelessness": (4, 14), "isolation": (4, 16),
@@ -90,7 +90,7 @@ RISK_PROFILES = {
         "case_event_bias": "positive",
     },
     "recovering": {
-        "share": 0.20,
+        "share": 0.17,
         "self_report": {
             "mood": (66, 80), "anxiety_stress": (18, 32), "sleep_quality": (64, 80),
             "safety": (72, 88), "hopelessness": (14, 28), "isolation": (14, 30),
@@ -105,7 +105,7 @@ RISK_PROFILES = {
         "case_event_bias": "positive",
     },
     "watch": {
-        "share": 0.24,
+        "share": 0.25,
         "self_report": {
             "mood": (54, 68), "anxiety_stress": (30, 44), "sleep_quality": (52, 68),
             "safety": (62, 78), "hopelessness": (26, 40), "isolation": (26, 42),
@@ -120,7 +120,7 @@ RISK_PROFILES = {
         "case_event_bias": "mixed",
     },
     "elevated": {
-        "share": 0.22,
+        "share": 0.25,
         "self_report": {
             "mood": (38, 52), "anxiety_stress": (48, 62), "sleep_quality": (37, 51),
             "safety": (43, 57), "hopelessness": (44, 58), "isolation": (45, 60),
@@ -135,7 +135,7 @@ RISK_PROFILES = {
         "case_event_bias": "adverse",
     },
     "acute": {
-        "share": 0.12,
+        "share": 0.16,
         "self_report": {
             "mood": (20, 34), "anxiety_stress": (62, 76), "sleep_quality": (18, 32),
             "safety": (22, 36), "hopelessness": (60, 74), "isolation": (62, 78),
@@ -287,7 +287,7 @@ def generate_checkins(
         "mood": -1, "anxiety_stress": +1, "sleep_quality": -1,
         "safety": -1, "hopelessness": +1, "isolation": +1,
     }
-    drift_span = {k: random.randint(6, 16) for k in worsening_sign}
+    drift_span = {k: random.randint(5, 11) for k in worsening_sign}
 
     for i in range(num_checkins):
         checkin_date = start_date + timedelta(days=i * 3)
@@ -662,16 +662,20 @@ def allocate_risk_profiles(num_victims: int) -> List[str]:
     up with no low-risk and no critical cases at all.
     """
     names = list(RISK_PROFILES)
-    counts = {n: int(num_victims * RISK_PROFILES[n]["share"]) for n in names}
+    exact = {n: num_victims * RISK_PROFILES[n]["share"] for n in names}
+    counts = {n: int(exact[n]) for n in names}
     # Guarantee at least one of each while the cohort is large enough to hold them.
     if num_victims >= len(names):
         for n in names:
             counts[n] = max(counts[n], 1)
-    # Hand any rounding remainder to the most common profile.
+    # Largest remainder for the leftovers, so the rounding error is spread rather
+    # than dumped entirely on whichever profile happens to have the biggest share.
     while sum(counts.values()) < num_victims:
-        counts[max(names, key=lambda n: RISK_PROFILES[n]["share"])] += 1
+        n = max(names, key=lambda n: exact[n] - counts[n])
+        counts[n] += 1
     while sum(counts.values()) > num_victims:
-        counts[max(names, key=lambda n: counts[n])] -= 1
+        n = max(names, key=lambda n: counts[n] - exact[n])
+        counts[n] -= 1
 
     allocation = [n for n in names for _ in range(counts[n])]
     random.shuffle(allocation)
@@ -679,7 +683,7 @@ def allocate_risk_profiles(num_victims: int) -> List[str]:
 
 
 def generate_all_synthetic_data(
-    num_victims: int = 100,
+    num_victims: int = 12,
     output_dir: str = "data/synthetic",
     seed: int = 20260904,
 ) -> None:
@@ -766,4 +770,4 @@ def generate_all_synthetic_data(
 
 
 if __name__ == "__main__":
-    generate_all_synthetic_data(num_victims=100)
+    generate_all_synthetic_data(num_victims=12)
