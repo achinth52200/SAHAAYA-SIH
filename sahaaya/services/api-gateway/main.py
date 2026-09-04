@@ -68,11 +68,20 @@ from api import router as review_router, generate_alerts_from_distress_results
 from models import review_store
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Load models and data on startup"""
+def initialise_runtime() -> None:
+    """
+    Load the models, engines and synthetic dataset into app_state.
+
+    Kept separate from the lifespan handler and safe to call more than once:
+    serverless runtimes do not reliably run ASGI lifespan events, so a hosted
+    deployment initialises lazily on its first request instead. Returns
+    immediately once the state is already populated.
+    """
+    if app_state.synthetic_data and app_state.distress_engine is not None:
+        return
+
     print("Loading models and data...")
-    
+
     # Load emotion model
     model_path = BASE / "nlp-ai-service" / "models"
     app_state.emotion_model, app_state.vectorizer = load_trained_model(
@@ -80,12 +89,12 @@ async def lifespan(app: FastAPI):
         str(model_path / "tfidf_vectorizer.joblib")
     )
     print("  Emotion model loaded")
-    
+
     # Initialize engines
     app_state.distress_engine = DistressEngine()
     app_state.explainability_engine = ExplainabilityEngine(distress_engine=app_state.distress_engine)
     print("  Distress & Explainability engines initialized")
-    
+
     # Load synthetic data
     data_dir = BASE / "nlp-ai-service" / "data" / "synthetic"
     app_state.synthetic_data = {
@@ -97,9 +106,15 @@ async def lifespan(app: FastAPI):
         "behavioural_patterns": pd.read_json(data_dir / "behavioural_patterns.jsonl", lines=True).to_dict("records"),
     }
     print(f"  Synthetic data loaded: {len(app_state.synthetic_data['victims'])} victims")
-    
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load models and data on startup"""
+    initialise_runtime()
+
     yield
-    
+
     print("Shutting down...")
 
 
