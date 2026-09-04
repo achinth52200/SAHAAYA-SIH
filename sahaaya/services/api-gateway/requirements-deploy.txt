@@ -1,0 +1,17 @@
+# Runtime dependencies for the hosted SAHAAYA API gateway.
+#
+# Deliberately narrower than services/api-gateway/requirements.txt: that file lists
+# the full local development stack (xgboost, sqlalchemy, asyncpg, redis, jose,
+# passlib), none of which the running API imports. Keeping this slim matters because
+# the scoring stack (pandas + numpy + scikit-learn) is already the bulk of the image.
+
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+python-dotenv>=1.0.0
+
+# Distress engine + emotion model
+joblib>=1.3.0
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0

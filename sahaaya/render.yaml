@@ -1,14 +1,27 @@
+# Hosts the real SAHAAYA pipeline: distress engine, explainability layer and the
+# lightweight emotion classifier running over the synthetic dataset.
+#
+# Note this is NOT the same backend as sahaaya/api/index.py, which the Vercel Python
+# function serves. That one returns fabricated scores derived from the victim ID and
+# never loads the model, so it must not be used for a demo.
+#
+# Deploy: Render dashboard -> New -> Blueprint -> select this repo.
+
 services:
   - type: web
     name: sahaaya-api
     runtime: docker
+    plan: free
     dockerfilePath: ./Dockerfile.api
     dockerContext: .
     healthCheckPath: /health
     envVars:
       - key: SECRET_KEY
         generateValue: true
+      # Origins permitted to call this API. main.py reads this as a comma-separated
+      # list; leaving it unset falls back to localhost only, which blocks the
+      # deployed frontend.
       - key: CORS_ORIGINS
-        sync: false
+        value: https://sih-sahaaya.vercel.app,http://localhost:3000,http://127.0.0.1:3000
       - key: NODE_ENV
         value: production

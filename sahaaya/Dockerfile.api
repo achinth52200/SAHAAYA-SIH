@@ -10,9 +10,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY services/api-gateway/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy requirements and install Python dependencies.
+# Uses the deploy-only subset: the full requirements.txt pulls xgboost, sqlalchemy,
+# asyncpg and redis, none of which the running API imports, and they add several
+# minutes plus a compile step to every build.
+COPY services/api-gateway/requirements-deploy.txt .
+RUN pip install --no-cache-dir -r requirements-deploy.txt
 
 # Copy application code
 COPY services/api-gateway/ .

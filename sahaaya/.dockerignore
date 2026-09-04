@@ -1,0 +1,30 @@
+# Keep the API image small and buildable on a free tier.
+#
+# Dockerfile.api copies whole service directories, so without this the 2.1 GB
+# transformer checkpoint would be baked into the image. The API only ever loads the
+# lightweight joblib classifier, so the checkpoint is excluded here.
+services/nlp-ai-service/models/emotion_classifier.pt
+**/*.pt
+**/*.pth
+**/*.bin
+
+# The API reads the .jsonl dataset; the .csv duplicates are not needed at runtime.
+**/data/synthetic/*.csv
+
+# Build artefacts and local tooling
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/node_modules
+**/.next
+**/.vercel
+**/.dart_tool
+**/build
+apps/mobile
+apps/web
+.git
+.venv
+venv
+*.log
+.env
+.env.*

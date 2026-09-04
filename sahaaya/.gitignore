@@ -95,3 +95,15 @@ out/
 .env.production
 .env.staging
 .vercel
+
+# --- Hosted backend assets -------------------------------------------------
+# The lightweight classifier and the synthetic dataset must ship with the repo so
+# a hosted backend can run real model inference instead of fabricated values.
+# These are ~1.3 MB in total. The 2.1 GB transformer checkpoint
+# (emotion_classifier.pt) stays excluded by the *.pt rule above.
+!services/nlp-ai-service/models/
+!services/nlp-ai-service/models/emotion_classifier_lightweight.joblib
+!services/nlp-ai-service/models/tfidf_vectorizer.joblib
+!services/nlp-ai-service/data/
+!services/nlp-ai-service/data/synthetic/
+!services/nlp-ai-service/data/synthetic/*.jsonl
