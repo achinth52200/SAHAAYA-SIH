@@ -37,4 +37,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run application
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2"]
+# Single worker: each one loads its own copy of pandas, scikit-learn, the classifier
+# and the dataset (~390 MB resident measured locally). Two workers would exceed the
+# 512 MB free-tier limit and be OOM-killed on boot. Endpoints measure in
+# milliseconds, so one worker is ample for demo traffic. Raise WEB_CONCURRENCY on a
+# larger instance.
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WEB_CONCURRENCY:-1}"]
