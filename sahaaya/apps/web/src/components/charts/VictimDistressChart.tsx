@@ -117,7 +117,7 @@ export function VictimDistressChart({ history, currentScore, baseline }: VictimD
             stroke="#3E7C59"
             strokeWidth={2}
             strokeDasharray="4 4"
-            label={{ value: `Baseline (${baseline.toFixed(1)})`, position: 'right', fill: '#3E7C59', fontSize: 10, fontWeight: 500 }}
+            label={{ value: `Baseline ${baseline.toFixed(1)}`, position: 'insideTopRight', fill: '#3E7C59', fontSize: 10, fontWeight: 500, dy: -4 }}
           />
 
           <Area

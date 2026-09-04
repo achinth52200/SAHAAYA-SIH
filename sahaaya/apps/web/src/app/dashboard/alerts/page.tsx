@@ -22,6 +22,7 @@ import {
   Input, Button, Modal, ConfirmDialog
 } from '@/components/ui';
 import { RadialDistressGauge } from '@/components/charts/RadialDistressGauge';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { cn, formatRelativeTime, formatDate } from '@/lib/utils';
 import type { Alert } from '@/types';
 
@@ -80,6 +81,9 @@ export default function AlertsPage() {
   useEffect(() => {
     loadAlerts();
   }, []);
+
+  // Newly generated alerts appear without a manual browser refresh.
+  useAutoRefresh(loadAlerts, { intervalMs: 15000 });
 
   const handleGenerateAlerts = async () => {
     setGenerating(true);

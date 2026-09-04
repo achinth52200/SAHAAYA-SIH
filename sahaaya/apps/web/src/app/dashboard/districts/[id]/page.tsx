@@ -34,7 +34,19 @@ export default function DistrictDashboardPage() {
       setLoading(true);
       try {
         const res = await api.getDistrictDashboard(districtId);
-        setData(res.data);
+        // The district endpoint returns victims as {score, band, escalation_7d} while the
+        // rest of the app uses the VictimSummary shape. Normalise here so the table,
+        // band filter and risk column actually render.
+        setData({
+          ...res.data,
+          victims: (res.data.victims ?? []).map((v: any) => ({
+            ...v,
+            latest_score: v.latest_score ?? v.score ?? null,
+            latest_band: v.latest_band ?? v.band ?? null,
+            trend: v.trend ?? null,
+            escalation_probability_7d: v.escalation_probability_7d ?? v.escalation_7d,
+          })),
+        });
       } catch (error) {
         console.error('Failed to load district dashboard:', error);
       } finally {
@@ -192,13 +204,24 @@ export default function DistrictDashboardPage() {
                             {victim.latest_score?.toFixed(1) || '—'}
                           </span>
                         </td>
-                        <td><DistressBandBadge band={victim.latest_band as any} size="sm" showScore={victim.latest_score ?? undefined} /></td>
+                        <td><DistressBandBadge band={victim.latest_band as any} size="sm" /></td>
                         <td>
-                          <Badge variant={victim.trend === 'worsening' ? 'red' : victim.trend === 'improving' ? 'green' : 'gray'} size="sm">
-                            {victim.trend || '—'}
+                          <Badge variant={victim.trend === 'worsening' ? 'red' : victim.trend === 'improving' ? 'green' : 'gray'} size="sm" dot>
+                            {victim.trend ? victim.trend.charAt(0).toUpperCase() + victim.trend.slice(1) : '—'}
                           </Badge>
                         </td>
-                        <td>{victim.escalation_probability_7d ? `${Math.round(victim.escalation_probability_7d * 100)}%` : '—'}</td>
+                        <td>
+                          {victim.escalation_probability_7d ? (
+                            <span className={cn(
+                              'font-heading font-semibold tabular-nums',
+                              victim.escalation_probability_7d >= 0.6 ? 'text-distress-orange' : 'text-text-primary'
+                            )}>
+                              {Math.round(victim.escalation_probability_7d * 100)}%
+                            </span>
+                          ) : (
+                            <span className="text-text-muted">—</span>
+                          )}
+                        </td>
                         <td>
                           <Link href={`/dashboard/victims/${victim.victim_id}`}>
                             <Button variant="ghost" size="sm">View</Button>

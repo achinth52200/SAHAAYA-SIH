@@ -79,6 +79,8 @@ export default function AnalyticsPage() {
     { name: 'Urgent (Red)', value: data.band_distribution.Red, color: '#D9534F' },
   ].filter(d => d.value > 0) : [];
 
+  const bandTotal = bandDistributionData.reduce((sum, d) => sum + d.value, 0);
+
   const stateData = data ? Object.entries(data.states).map(([state, bands]) => ({
     state,
     ...bands,
@@ -181,31 +183,53 @@ export default function AnalyticsPage() {
               <CardDescription>National distribution across all bands</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-64 flex items-center justify-center">
+              {/* Total sits in the middle of the ring; the breakdown reads as a list below.
+                  Outside slice labels collided with the legend and clipped at this height. */}
+              <div className="relative h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsPieChart>
                     <Pie
                       data={bandDistributionData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      fill="#8884d8"
-                      paddingAngle={2}
+                      innerRadius={62}
+                      outerRadius={94}
+                      paddingAngle={3}
                       dataKey="value"
                       nameKey="name"
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      labelLine={false}
+                      stroke="none"
                     >
                       {bandDistributionData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Legend />
                     <Tooltip formatter={(value: number) => [value.toString(), 'victims']} />
                   </RechartsPieChart>
                 </ResponsiveContainer>
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="font-heading text-display-sm font-bold leading-none text-text-primary tabular-nums">
+                    {bandTotal}
+                  </span>
+                  <span className="mt-1 text-caption text-text-muted">victims</span>
+                </div>
               </div>
+
+              <ul className="mt-5 space-y-2.5 border-t border-border pt-4">
+                {bandDistributionData.map((entry) => (
+                  <li key={entry.name} className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2.5 text-body-sm text-text-secondary">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: entry.color }} />
+                      {entry.name}
+                    </span>
+                    <span className="text-body-sm font-medium text-text-primary tabular-nums">
+                      {entry.value}
+                      <span className="ml-2 text-text-muted">
+                        {bandTotal > 0 ? Math.round((entry.value / bandTotal) * 100) : 0}%
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </CardContent>
           </Card>
         </motion.section>
@@ -228,6 +252,8 @@ export default function AnalyticsPage() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#D4D8D5" horizontal={false} />
                     <XAxis
                       type="number"
+                      // Victim counts are integers — without this the axis renders 0.25, 0.5, 0.75
+                      allowDecimals={false}
                       tick={{ fontSize: 11, fill: '#7A8D7F', fontFamily: 'Inter' }}
                       axisLine={false}
                       tickLine={false}
@@ -246,8 +272,9 @@ export default function AnalyticsPage() {
                         name === 'highRisk' ? 'High Risk' : name === 'Orange' ? 'Orange' : 'Red'
                       ]}
                     />
-                    <Bar dataKey="Orange" radius={[0, 4, 4, 0]} fill="#E8703D" />
-                    <Bar dataKey="Red" radius={[0, 4, 4, 0]} fill="#D9534F" />
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                    <Bar dataKey="Orange" stackId="risk" fill="#E8703D" />
+                    <Bar dataKey="Red" stackId="risk" radius={[0, 4, 4, 0]} fill="#D9534F" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

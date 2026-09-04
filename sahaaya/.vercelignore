@@ -1,0 +1,11 @@
+**/node_modules
+**/.next
+**/.dart_tool
+**/build
+**/__pycache__
+**/.pytest_cache
+**/.vercel
+*.tsbuildinfo
+apps/mobile
+services/nlp-ai-service/models/emotion_classifier.pt
+write_*.py

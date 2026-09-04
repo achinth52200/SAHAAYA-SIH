@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, Poppins } from 'next/font/google';
 import '../styles/globals.css';
+import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistration';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -79,6 +80,7 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
       </head>
       <body className="min-h-screen bg-background font-body text-text-primary">
+        <ServiceWorkerRegistration />
         {children}
       </body>
     </html>

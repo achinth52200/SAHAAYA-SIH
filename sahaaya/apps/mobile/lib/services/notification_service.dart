@@ -30,6 +30,9 @@ class NotificationService {
 
     // Create notification channels
     await _createChannels();
+    await _notifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
     _initialized = true;
   }
 

@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiService {
-  static const String _baseUrl = 'http://10.0.2.2:8000'; // Android emulator localhost
+  static const String _baseUrl = 'https://sahaaya-ten.vercel.app';
   static const String _apiVersion = 'v1';
   
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
@@ -86,6 +86,21 @@ class ApiService {
   Future<Map<String, dynamic>> getVictim(String victimId) => _request(method: 'GET', endpoint: '/victims/$victimId');
   Future<Map<String, dynamic>> getVictimDistress(String victimId) => _request(method: 'GET', endpoint: '/victims/$victimId/distress');
   Future<Map<String, dynamic>> getVictimExplanation(String victimId) => _request(method: 'GET', endpoint: '/victims/$victimId/explanation');
+
+  Future<List<dynamic>> getSupportRequests() async {
+    final response = await _request(method: 'GET', endpoint: '/support-requests');
+    return response is List ? response : (response['items'] as List? ?? []);
+  }
+
+  Future<Map<String, dynamic>> createSupportRequest({
+    required String victimId,
+    required String requestType,
+    required String message,
+  }) => _request(
+    method: 'POST',
+    endpoint: '/support-requests',
+    body: {'victim_id': victimId, 'request_type': requestType, 'message': message},
+  );
 
   // Emotion prediction
   Future<Map<String, dynamic>> predictEmotion(String text) => _request(

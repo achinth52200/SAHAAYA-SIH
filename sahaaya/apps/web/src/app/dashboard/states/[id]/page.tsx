@@ -38,7 +38,17 @@ export default function StateDashboardPage() {
       setLoading(true);
       try {
         const res = await api.getStateDashboard(stateId);
-        setData(res.data);
+        // The state endpoint returns counts but not the percentage the UI shows,
+        // which rendered as a bare "%". Derive it here.
+        const payload = res.data;
+        setData({
+          ...payload,
+          high_risk_percentage: payload.high_risk_percentage ?? (
+            payload.total_victims > 0
+              ? Math.round((payload.high_risk_count / payload.total_victims) * 100)
+              : 0
+          ),
+        });
       } catch (error) {
         console.error("Failed to load state dashboard:", error);
       } finally {
@@ -185,12 +195,8 @@ export default function StateDashboardPage() {
                 </div>
                 <Building2 className="w-8 h-8 text-gray-400" />
               </div>
-              <div className="flex items-center gap-3 mb-3">
-                <span className={"badge " + BADGE_COLORS.Red}>{district.band_distribution.Red}</span>
-                <span className={"badge " + BADGE_COLORS.Orange}>{district.band_distribution.Orange}</span>
-                <span className={"badge " + BADGE_COLORS.Yellow}>{district.band_distribution.Yellow}</span>
-                <span className={"badge " + BADGE_COLORS.Green}>{district.band_distribution.Green}</span>
-              </div>
+              {/* The per-band breakdown below already carries these counts — the badge
+                  row above it was the same numbers a second time. */}
               <div className="space-y-2">
                 {BANDS.map((band) => {
                   const pct = getPct(district, band);

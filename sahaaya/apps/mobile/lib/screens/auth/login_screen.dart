@@ -74,6 +74,15 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         email: 'victim@sahaaya.gov.in',
       );
       if (mounted) context.go('/home');
+    } else if (RegExp(r'^victim([2-9]|1[0-9]|2[0-5])@sahaaya\.gov\.in$').hasMatch(_emailController.text) && _passwordController.text == 'demo123') {
+      final number = int.parse(RegExp(r'^victim([2-9]|1[0-9]|2[0-5])@').firstMatch(_emailController.text)!.group(1)!);
+      context.read<AuthService>().login(
+        id: 'VICTIM_${number.toString().padLeft(4, '0')}',
+        role: 'victim',
+        name: 'Anonymous Victim $number',
+        email: _emailController.text,
+      );
+      if (mounted) context.go('/home');
     } else if (_emailController.text == 'counsellor@sahaaya.gov.in' && _passwordController.text == 'demo123') {
       context.read<AuthService>().login(
         id: 'COUNSELLOR_001',

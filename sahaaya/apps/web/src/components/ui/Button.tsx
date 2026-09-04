@@ -85,7 +85,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           </svg>
         )}
         {!loading && leftIcon && <span className="flex-shrink-0">{leftIcon}</span>}
-        <span className={loading ? 'sr-only' : ''}>{children}</span>
+        {/* inline-flex so icons passed as children sit beside the label — Tailwind's
+            preflight sets `svg { display: block }`, which otherwise stacks them. */}
+        <span className={cn('inline-flex items-center gap-2 whitespace-nowrap', loading && 'sr-only')}>
+          {children}
+        </span>
         {!loading && rightIcon && <span className="flex-shrink-0">{rightIcon}</span>}
       </button>
     );

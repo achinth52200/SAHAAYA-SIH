@@ -122,16 +122,11 @@ class _SupportRequestScreenState extends State<SupportRequestScreen> with Ticker
       final auth = context.read<AuthService>();
       final api = context.read<ApiService>();
 
-      // Create intervention via API
-      await api.createIntervention('ALERT_TEMP', {
-        'created_by': auth.userId,
-        'type': _selectedSupportType,
-        'title': _supportTypes.firstWhere((t) => t['id'] == _selectedSupportType)['title'],
-        'description': _detailsController.text,
-        'priority': _urgent ? 'critical' : 'high',
-        'assigned_to': auth.userId,
-        'assigned_role': auth.userRole,
-      });
+      await api.createSupportRequest(
+        victimId: auth.userId ?? 'VICTIM_0001',
+        requestType: _selectedSupportType,
+        message: _detailsController.text,
+      );
 
       if (mounted) {
         setState(() => _loading = false);

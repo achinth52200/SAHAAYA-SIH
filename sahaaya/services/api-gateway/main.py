@@ -151,6 +151,7 @@ class VictimSummary(BaseModel):
     latest_score: Optional[float] = None
     latest_band: Optional[str] = None
     trend: Optional[str] = None
+    escalation_probability_7d: Optional[float] = None
 
 
 class DistressScoreRequest(BaseModel):
@@ -409,6 +410,7 @@ async def list_victims():
                 latest_score=result.distress_score,
                 latest_band=result.band,
                 trend=result.trend_direction,
+                escalation_probability_7d=result.escalation_probability_7d,
             ))
         except Exception as e:
             # If scoring fails, still include victim

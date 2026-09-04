@@ -12,9 +12,10 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
     <select
       ref={ref}
       className={cn(
-        'input flex h-10 w-full items-center justify-between',
+        // No fixed height: `.input` already sets py-3, and pinning h-10 on top of that
+        // clipped the option text inside the control.
+        'input w-full',
         'data-[placeholder]:text-text-muted',
-        '[&>span]:line-clamp-1',
         className
       )}
       {...props}

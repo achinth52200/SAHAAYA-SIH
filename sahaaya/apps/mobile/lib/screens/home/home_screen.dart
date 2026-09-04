@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -5,6 +6,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../theme/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
+import '../../services/notification_service.dart';
 import '../../widgets/mood_selector.dart';
 import '../../widgets/distress_score_card.dart';
 
@@ -22,6 +24,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Map<String, dynamic>? _distressData;
   bool _loading = true;
+  Timer? _supportTimer;
+  final Set<String> _notifiedSupportRequests = {};
 
   @override
   void initState() {
@@ -38,6 +42,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
     _controller.forward();
     _loadData();
+    final auth = context.read<AuthService>();
+    if (auth.userRole != 'victim') {
+      _supportTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollSupportRequests());
+    }
+  }
+
+  Future<void> _pollSupportRequests() async {
+    final api = context.read<ApiService>();
+    try {
+      final requests = await api.getSupportRequests();
+      for (final raw in requests) {
+        if (raw is! Map<String, dynamic>) continue;
+        final id = raw['id']?.toString();
+        if (id == null || !_notifiedSupportRequests.add(id)) continue;
+        await NotificationService().showInstantNotification(
+          id: id.hashCode,
+          title: 'SAHAAYA support request',
+          body: '${raw['request_type'] ?? 'Support'} request from ${raw['victim_id'] ?? 'victim'}',
+          payload: 'support:$id',
+        );
+      }
+    } catch (error) {
+      debugPrint('Support notification poll failed: $error');
+    }
   }
 
   Future<void> _loadData() async {
@@ -58,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _supportTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }

@@ -6,12 +6,39 @@ import { HeartHandshake, LogOut, MessageCircle, ShieldCheck, LifeBuoy, RefreshCw
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/store';
-import { RadialDistressGauge } from '@/components/charts/RadialDistressGauge';
-import { VictimDistressChart } from '@/components/charts/VictimDistressChart';
-import { Button, Card, CardContent, CardHeader, CardTitle, DistressBandBadge } from '@/components/ui';
+import { WellbeingState } from '@/components/victim/WellbeingState';
+import { WellbeingTrend } from '@/components/victim/WellbeingTrend';
+import { Button, Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
 import type { DistressScore, Victim } from '@/types';
 
 type HistoryPoint = { date: string; score: number; band: string };
+type CheckinStep = 'mood' | 'stress' | 'sleep' | 'safety' | 'hope' | 'message';
+
+const checkinQuestions: Record<Exclude<CheckinStep, 'message'>, {
+  label: string;
+  prompt: string;
+}> = {
+  mood: {
+    label: 'How you are feeling',
+    prompt: 'How have you been feeling overall today?',
+  },
+  stress: {
+    label: 'Stress',
+    prompt: 'How much stress or worry have you felt today?',
+  },
+  sleep: {
+    label: 'Sleep',
+    prompt: 'How was your sleep recently?',
+  },
+  safety: {
+    label: 'Safety',
+    prompt: 'How safe do you feel right now?',
+  },
+  hope: {
+    label: 'Connection and hope',
+    prompt: 'How connected and hopeful have you felt?',
+  },
+};
 
 export default function VictimPortalPage() {
   const router = useRouter();
@@ -33,7 +60,15 @@ export default function VictimPortalPage() {
   const [safety, setSafety] = useState(50);
   const [hopelessness, setHopelessness] = useState(50);
   const [isolation, setIsolation] = useState(50);
+  const [urgentHelp, setUrgentHelp] = useState(0);
   const [checkinMessage, setCheckinMessage] = useState('');
+  const [checkinStep, setCheckinStep] = useState<CheckinStep>('mood');
+  const [checkinAnswers, setCheckinAnswers] = useState<Record<string, number>>({});
+  const [checkinInput, setCheckinInput] = useState('');
+  const [checkinMessages, setCheckinMessages] = useState<{ role: 'assistant' | 'user'; text: string }[]>([]);
+  // Wait for the persisted auth store to rehydrate before deciding to redirect,
+  // otherwise a direct visit or refresh bounces a signed-in victim to /login.
+  const [hydrated, setHydrated] = useState(false);
 
   const loadData = async () => {
     if (!user || user.role !== 'victim') return;
@@ -61,6 +96,17 @@ export default function VictimPortalPage() {
   };
 
   useEffect(() => {
+    const persist = useAuthStore.persist;
+    if (!persist) {
+      setHydrated(true);
+      return;
+    }
+    if (persist.hasHydrated()) setHydrated(true);
+    return persist.onFinishHydration(() => setHydrated(true));
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
     if (!user) {
       router.replace('/login?redirect=%2Fvictim');
     } else if (user.role !== 'victim') {
@@ -68,7 +114,15 @@ export default function VictimPortalPage() {
     } else {
       loadData();
     }
-  }, [router, user]);
+  }, [hydrated, router, user]);
+
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-4 border-primary-500 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
 
   if (!user || user.role !== 'victim') return null;
 
@@ -101,21 +155,93 @@ export default function VictimPortalPage() {
     setCheckinSending(true);
     setError('');
     try {
-      await api.submitCheckin({
+      const response = await api.submitCheckin({
         victim_id: user.id,
-        scores: { mood, anxiety_stress: anxiety, sleep_quality: sleep, safety, hopelessness, isolation },
+        scores: { mood, anxiety_stress: anxiety, sleep_quality: sleep, safety, hopelessness, isolation, urgent_help: urgentHelp },
         message: checkinMessage || undefined,
       });
       setCheckinOpen(false);
       setCheckinMessage('');
+      setCheckinInput('');
+      setCheckinMessages([{ role: 'assistant', text: 'Hi. I am here to listen. You can answer in your own words, and you can stop at any time.' }]);
       await loadData();
-      setError('Check-in submitted. Your wellbeing view has been updated.');
+      setError(response.data.human_review
+        ? `Check-in submitted. A review notification was sent to: ${response.data.routed_roles.join(' and ')}. A trained human will follow up.`
+        : 'Check-in submitted. Your wellbeing view has been updated.');
     } catch (submitError) {
       console.error('Failed to submit check-in:', submitError);
       setError('We could not submit your check-in. Please try again.');
     } finally {
       setCheckinSending(false);
     }
+  };
+
+  const beginCheckin = () => {
+    setCheckinAnswers({});
+    setCheckinMessage('');
+    setUrgentHelp(0);
+    setCheckinStep('mood');
+    setCheckinOpen(true);
+  };
+
+  const scoreTypedAnswer = (step: Exclude<CheckinStep, 'message'>, answer: string) => {
+    const text = answer.toLowerCase();
+    if (step === 'mood' && /(need help|unsafe|very distress|terrible|bad)/.test(text)) return 15;
+    if (step === 'stress' && /(overwhelm|very high|extreme|a lot)/.test(text)) return 15;
+    if (step === 'sleep' && /(none|couldn't|cannot|very difficult|bad)/.test(text)) return 15;
+    if (step === 'safety' && /(unsafe|threat|danger|afraid)/.test(text)) return 10;
+    if (step === 'hope' && /(alone|isolat|no hope|hopeless|disconnected)/.test(text)) return 15;
+    if (/(better|good|safe|restful|calm|hopeful|connected|little|okay|fine)/.test(text)) return 70;
+    if (/(stress|worry|difficult|hard|sad|anxious|uncertain|not great)/.test(text)) return 35;
+    return 50;
+  };
+
+  const answerCheckin = (step: Exclude<CheckinStep, 'message'>, answer: string) => {
+    const value = scoreTypedAnswer(step, answer);
+    setCheckinAnswers((answers) => ({ ...answers, [step]: value }));
+    if (step === 'mood') setMood(value);
+    if (step === 'mood' && value <= 15) setUrgentHelp(1);
+    if (step === 'stress') setAnxiety(value);
+    if (step === 'sleep') setSleep(value);
+    if (step === 'safety') setSafety(value);
+    if (step === 'hope') {
+      setHopelessness(value);
+      setIsolation(value);
+    }
+    const next: Record<Exclude<CheckinStep, 'message'>, CheckinStep> = {
+      mood: 'stress',
+      stress: 'sleep',
+      sleep: 'safety',
+      safety: 'hope',
+      hope: 'message',
+    };
+    setCheckinStep(next[step]);
+  };
+
+  const sendCheckinMessage = () => {
+    const answer = checkinInput.trim();
+    if (!answer || checkinSending) return;
+    setCheckinMessages((messages) => [...messages, { role: 'user', text: answer }]);
+    setCheckinInput('');
+    if (checkinStep === 'message') {
+      setCheckinMessage(answer);
+      if (/\b(unsafe|danger|threat|hurt myself|self harm|harm myself|suicid|kill myself|no hope|hopeless|afraid|scared for my life|violence|not good|feel bad|feeling bad|very bad|terrible)\b/i.test(answer)) {
+        setUrgentHelp(1);
+        setCheckinMessages((messages) => [...messages, { role: 'assistant', text: 'I hear that this may need attention. I will flag this check-in for a counsellor and the authorised safety authority to review. I cannot contact emergency services automatically.' }]);
+        return;
+      }
+      setCheckinMessages((messages) => [...messages, { role: 'assistant', text: 'Thank you. I have added that to your private check-in. You can send it when you are ready.' }]);
+      return;
+    }
+    answerCheckin(checkinStep, answer);
+    const next: Record<Exclude<CheckinStep, 'message'>, CheckinStep> = { mood: 'stress', stress: 'sleep', sleep: 'safety', safety: 'hope', hope: 'message' };
+    const nextStep = next[checkinStep];
+    setTimeout(() => {
+      setCheckinMessages((messages) => [...messages, {
+        role: 'assistant',
+        text: nextStep === 'message' ? 'Thank you for telling me. Is there anything else you would like a trained support person to understand? This is optional.' : checkinQuestions[nextStep].prompt,
+      }]);
+    }, 250);
   };
 
   return (
@@ -139,21 +265,38 @@ export default function VictimPortalPage() {
       </header>
 
       <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
-        <section className="rounded-3xl bg-gradient-to-br from-primary-50 to-secondary-50 p-6 sm:p-8">
-          <p className="text-body-sm font-medium text-primary-600">Welcome, {user.name}</p>
-          <h1 className="mt-2 font-heading text-display-sm font-semibold text-text-primary">How are you feeling today?</h1>
-          <p className="mt-2 max-w-2xl text-body text-text-secondary">
-            This is a private space to check in, understand your recent wellbeing trend, and ask for support when you need it.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Button onClick={() => setCheckinOpen(true)}>
-              <HeartHandshake className="h-4 w-4" />
-              Start a check-in
-            </Button>
-            <Button variant="outline" onClick={() => setSupportOpen(true)}>
-              <LifeBuoy className="h-4 w-4" />
-              Ask for support
-            </Button>
+        <section className="relative overflow-hidden rounded-3xl border border-primary-100 bg-gradient-to-br from-primary-50 via-secondary-50 to-background p-7 sm:p-10">
+          <div
+            className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary-200/30 blur-3xl"
+            aria-hidden="true"
+          />
+          <div className="pointer-events-none absolute -bottom-20 left-1/3 h-52 w-52 rounded-full bg-distress-yellow/10 blur-3xl" aria-hidden="true" />
+
+          <div className="relative">
+            <p className="text-body-sm font-medium text-primary-600">Welcome back, {user.name}</p>
+            <h1 className="mt-2.5 max-w-xl font-heading text-[2.25rem] font-bold leading-[1.15] tracking-[-0.02em] text-text-primary sm:text-[2.75rem]">
+              How are you feeling today?
+            </h1>
+            <p className="mt-3 max-w-xl text-body text-text-secondary leading-relaxed">
+              This is your private space. Check in when you want to, see how you have been over time, and reach a
+              trained person whenever you need one. Nothing here happens automatically.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <button
+                onClick={beginCheckin}
+                className="group inline-flex items-center gap-2 rounded-2xl bg-primary-500 px-6 py-3.5 text-body font-medium text-white transition-all duration-300 hover:bg-primary-600 hover:shadow-[0_14px_34px_-14px_rgba(62,124,89,0.8)] hover:-translate-y-0.5"
+              >
+                <HeartHandshake className="h-[18px] w-[18px]" />
+                Start a check-in
+              </button>
+              <button
+                onClick={() => setSupportOpen(true)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-primary-200 bg-surface/80 px-6 py-3.5 text-body font-medium text-primary-700 backdrop-blur-sm transition-colors hover:bg-surface"
+              >
+                <LifeBuoy className="h-[18px] w-[18px]" />
+                Ask for support
+              </button>
+            </div>
           </div>
         </section>
 
@@ -189,24 +332,52 @@ export default function VictimPortalPage() {
 
         {checkinOpen && (
           <div className="rounded-2xl border border-primary-200 bg-surface p-5 shadow-card">
-            <h2 className="font-heading text-heading-md font-semibold text-text-primary">Your private check-in</h2>
-            <p className="mt-1 text-body-sm text-text-secondary">Use the sliders gently. There are no right or wrong answers.</p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              {[
-                ['Mood', mood, setMood], ['Anxiety or stress', anxiety, setAnxiety],
-                ['Sleep quality', sleep, setSleep], ['Sense of safety', safety, setSafety],
-                ['Hopefulness', hopelessness, setHopelessness], ['Feeling connected', isolation, setIsolation],
-              ].map(([label, value, setter]) => (
-                <label key={label as string} className="text-body-sm text-text-secondary">
-                  <span className="flex justify-between"><span>{label as string}</span><strong className="text-text-primary">{value as number}</strong></span>
-                  <input className="mt-2 w-full accent-primary-500" type="range" min="0" max="100" value={value as number} onChange={(event) => (setter as (value: number) => void)(Number(event.target.value))} />
-                </label>
-              ))}
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-caption font-medium uppercase tracking-wide text-primary-600">Private check-in</p>
+                <h2 className="mt-1 font-heading text-heading-md font-semibold text-text-primary">Let&apos;s take this one step at a time</h2>
+                <p className="mt-1 text-body-sm text-text-secondary">There are no right or wrong answers. You can stop whenever you want.</p>
+              </div>
+              <span className="rounded-full bg-primary-50 px-3 py-1 text-caption text-primary-700">
+                {checkinStep === 'message' ? '6 of 6' : `${Object.keys(checkinAnswers).length + 1} of 6`}
+              </span>
             </div>
-            <textarea value={checkinMessage} onChange={(event) => setCheckinMessage(event.target.value)} placeholder="Optional: anything you want the support team to understand?" className="mt-4 min-h-24 w-full rounded-xl border border-border bg-background p-3 text-body-sm outline-none focus:border-primary-500" />
-            <div className="mt-4 flex gap-3">
-              <Button onClick={submitCheckin} loading={checkinSending}>Submit check-in</Button>
-              <Button variant="outline" onClick={() => setCheckinOpen(false)}>Cancel</Button>
+            <div className="mt-5 space-y-3">
+              <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl bg-background p-3">
+                {checkinMessages.map((message, index) => (
+                  <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[90%] rounded-2xl px-4 py-3 text-body-sm ${message.role === 'user' ? 'rounded-tr-sm bg-primary-500 text-white' : 'rounded-tl-sm bg-secondary-50 text-text-primary'}`}>
+                      {message.text}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={checkinInput}
+                  onChange={(event) => setCheckinInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      sendCheckinMessage();
+                    }
+                  }}
+                  placeholder="Type your answer..."
+                  aria-label="Type your check-in answer"
+                  rows={2}
+                  className="min-h-12 flex-1 resize-none rounded-xl border border-border bg-background p-3 text-body-sm outline-none focus:border-primary-500"
+                />
+                <Button onClick={sendCheckinMessage} disabled={!checkinInput.trim() || checkinSending} aria-label="Send message">
+                  <MessageCircle className="h-4 w-4" />
+                  Send
+                </Button>
+              </div>
+              {checkinStep === 'message' && (
+                <div className="flex flex-wrap gap-3 border-t border-border pt-3">
+                  <Button onClick={submitCheckin} loading={checkinSending}>Submit check-in</Button>
+                  <Button variant="outline" onClick={() => setCheckinOpen(false)}>Cancel</Button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -215,30 +386,45 @@ export default function VictimPortalPage() {
           <div className="rounded-2xl border border-border bg-surface p-8 text-center text-text-secondary">Loading your private wellbeing view...</div>
         ) : score && victim ? (
           <>
-            <section className="grid gap-6 lg:grid-cols-[280px_1fr]">
-              <Card>
-                <CardContent className="flex flex-col items-center p-6">
-                  <p className="text-body-sm font-medium text-text-secondary">Your latest check-in</p>
-                  <RadialDistressGauge score={score.distress_score} band={score.band} size="lg" showLabel />
-                  <DistressBandBadge band={score.band} className="mt-2" />
-                  <p className="mt-3 text-center text-caption text-text-muted">This view is for reflection, not a diagnosis.</p>
-                </CardContent>
-              </Card>
+            <section className="grid gap-6 lg:grid-cols-[320px_1fr]">
+              <WellbeingState
+                band={score.band}
+                trend={score.trend_direction}
+                onAskForSupport={() => setSupportOpen(true)}
+              />
               <Card>
                 <CardHeader>
-                  <CardTitle>Your wellbeing trend</CardTitle>
-                  <p className="text-body-sm text-text-secondary">Compared with your own recent history</p>
+                  <CardTitle>How you have been feeling</CardTitle>
+                  <p className="text-body-sm text-text-secondary">Your own check-ins over recent weeks</p>
                 </CardHeader>
                 <CardContent>
-                  <VictimDistressChart history={history} currentScore={score.distress_score} baseline={score.personal_baseline} />
+                  <WellbeingTrend points={history} baseline={score.personal_baseline} />
                 </CardContent>
               </Card>
             </section>
 
             <section className="grid gap-6 md:grid-cols-3">
-              <Card><CardContent className="p-5"><p className="text-caption text-text-muted">Personal baseline</p><p className="mt-1 text-heading-lg font-semibold text-text-primary">{score.personal_baseline.toFixed(1)}</p><p className="mt-1 text-body-sm text-text-secondary">Your comparison point</p></CardContent></Card>
-              <Card><CardContent className="p-5"><p className="text-caption text-text-muted">Recent direction</p><p className="mt-1 text-heading-lg font-semibold capitalize text-text-primary">{score.trend_direction}</p><p className="mt-1 text-body-sm text-text-secondary">Based on multiple check-ins</p></CardContent></Card>
-              <Card><CardContent className="p-5"><p className="text-caption text-text-muted">Case reference</p><p className="mt-1 text-body-sm font-semibold text-text-primary">{victim.case_type}</p><p className="mt-1 text-body-sm text-text-secondary">{victim.district}, {victim.state}</p></CardContent></Card>
+              <Card>
+                <CardContent className="p-5">
+                  <p className="text-caption text-text-muted">Check-ins recorded</p>
+                  <p className="mt-1 text-heading-lg font-semibold text-text-primary">{history.length}</p>
+                  <p className="mt-1 text-body-sm text-text-secondary">Every one of them is yours</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-5">
+                  <p className="text-caption text-text-muted">Who can see this</p>
+                  <p className="mt-1 text-heading-lg font-semibold text-text-primary">Your support team</p>
+                  <p className="mt-1 text-body-sm text-text-secondary">Only people you have consented to</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-5">
+                  <p className="text-caption text-text-muted">Your case</p>
+                  <p className="mt-1 text-body-sm font-semibold text-text-primary">{victim.case_type}</p>
+                  <p className="mt-1 text-body-sm text-text-secondary">{victim.district}, {victim.state}</p>
+                </CardContent>
+              </Card>
             </section>
 
             <section className="grid gap-6 md:grid-cols-2">

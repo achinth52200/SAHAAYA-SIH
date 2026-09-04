@@ -31,6 +31,19 @@ const navigation = [
   { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
 ];
 
+/**
+ * The most specific matching nav entry. Matching by prefix alone makes "/dashboard"
+ * match every sub-route, which lit up two sidebar items at once.
+ */
+function activeNavHref(pathname: string) {
+  // Routes without their own nav entry belong to a section they were reached from.
+  if (pathname.startsWith('/dashboard/states')) return '/dashboard/districts';
+
+  return [...navigation]
+    .sort((a, b) => b.href.length - a.href.length)
+    .find((n) => pathname === n.href || pathname.startsWith(n.href + '/'))?.href;
+}
+
 export default function DashboardLayout({
   children,
 }: {
@@ -43,36 +56,85 @@ export default function DashboardLayout({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [supportCount, setSupportCount] = useState(0);
-  const lastSupportCheck = useRef<string>('');
+  const seenSupportRequests = useRef<Set<string>>(new Set());
+  // Guards the first poll so pre-existing requests seed the "seen" set silently.
+  const hasBaselinedSupport = useRef(false);
+
+  // The auth store persists to localStorage and rehydrates asynchronously. Without waiting
+  // for that, a hard refresh (or opening a dashboard URL directly) sees `user === null` on
+  // the first render and bounces a signed-in officer back to the login page.
+  // Starts false so server and first client render agree; the persist API only exists in the browser.
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    const persist = useAuthStore.persist;
+    if (!persist) {
+      setHydrated(true);
+      return;
+    }
+    if (persist.hasHydrated()) setHydrated(true);
+    return persist.onFinishHydration(() => setHydrated(true));
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
     if (!user) {
       router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
     } else if (user.role === 'victim') {
       router.replace('/victim');
     }
-  }, [pathname, router, user]);
+  }, [hydrated, pathname, router, user]);
 
   useEffect(() => {
     if (!user || user.role === 'victim') return;
     let active = true;
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch((error) => {
+        console.error('Failed to request notification permission:', error);
+      });
+    }
+    type SupportRequest = { id?: string; request_id?: string; victim_id: string; request_type: string; created_at: string };
+    const idOf = (r: SupportRequest) => r.id || r.request_id || `${r.victim_id}-${r.created_at}`;
+
     const pollSupportRequests = async () => {
       try {
         const response = await api.getSupportRequests({
           role: user.role === 'counsellor' ? 'counsellor' : 'district_officer',
-          since: lastSupportCheck.current || undefined,
         });
-        const requests = response.data as Array<{ request_id: string; victim_id: string; request_type: string; created_at: string }>;
-        if (!active || requests.length === 0) return;
-        lastSupportCheck.current = requests[0].created_at;
-        setSupportCount((count) => count + requests.length);
-        if ('Notification' in window && Notification.permission === 'granted') {
-          requests.forEach((request) => {
-            new Notification('SAHAAYA support request', {
-              body: `${request.request_type.replace('_', ' ')} request from ${request.victim_id}. Human review is required.`,
-              tag: request.request_id,
-            });
-          });
+        if (!active) return;
+        const requests = (response.data ?? []) as SupportRequest[];
+
+        // The first poll only establishes a baseline. Requests that already existed when
+        // this console opened are history, not news — notifying for each of them is what
+        // produced a burst of notifications on every page load.
+        if (!hasBaselinedSupport.current) {
+          requests.forEach((request) => seenSupportRequests.current.add(idOf(request)));
+          hasBaselinedSupport.current = true;
+          return;
+        }
+
+        const newRequests = requests.filter((request) => !seenSupportRequests.current.has(idOf(request)));
+        if (newRequests.length === 0) return;
+        newRequests.forEach((request) => seenSupportRequests.current.add(idOf(request)));
+
+        setSupportCount((count) => count + newRequests.length);
+
+        if ('serviceWorker' in navigator && Notification.permission === 'granted') {
+          // Surface only the most recent request. A burst collapses into one notification,
+          // and the fixed tag makes it replace the previous one instead of stacking.
+          const latest = [...newRequests].sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          )[0];
+          const others = newRequests.length - 1;
+          const registration = await navigator.serviceWorker.ready;
+          if (!active) return;
+          registration.showNotification('SAHAAYA support request', {
+            body: `${latest.request_type.replace('_', ' ')} request from ${latest.victim_id}. Human review is required.`
+              + (others > 0 ? ` (+${others} more waiting)` : ''),
+            tag: 'sahaaya-support-request',
+            renotify: true,
+            icon: '/icon.svg',
+          } as NotificationOptions);
         }
       } catch (error) {
         console.error('Failed to poll support requests:', error);
@@ -87,10 +149,20 @@ export default function DashboardLayout({
   }, [user]);
 
   const enableNotifications = async () => {
-    if ('Notification' in window) {
+    // Acknowledging clears the badge — previously the count only ever grew.
+    setSupportCount(0);
+    if ('Notification' in window && Notification.permission === 'default') {
       await Notification.requestPermission();
     }
   };
+
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-4 border-primary-500 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
 
   if (!user || user.role === 'victim') {
     return null;
@@ -110,22 +182,31 @@ export default function DashboardLayout({
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed left-0 top-0 z-50 h-screen bg-surface border-r border-border transition-transform duration-300 ease-out lg:translate-x-0',
+          'fixed left-0 top-0 z-50 h-screen hero-dark transition-transform duration-300 ease-out lg:translate-x-0',
           sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full w-64 lg:translate-x-0'
         )}
         aria-label="Main navigation"
       >
-        <div className="flex flex-col h-full">
+        {/* subtle edge highlight */}
+        <div
+          className="absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-primary-400/30 to-transparent"
+          aria-hidden="true"
+        />
+
+        <div className="relative flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center gap-2 px-6 py-5 border-b border-border">
-            <Link href="/dashboard" className="flex items-center gap-2" aria-label="SAHAAYA Dashboard">
-              <div className="w-10 h-10 rounded-xl bg-primary-500 flex items-center justify-center">
-                <Shield className="w-6 h-6 text-white" />
+          <div className="flex items-center gap-2.5 px-5 py-5">
+            <Link href="/dashboard" className="flex items-center gap-2.5" aria-label="SAHAAYA Dashboard">
+              <div className="w-9 h-9 rounded-xl bg-primary-400 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-[#0B140F]" />
               </div>
-              <span className="font-heading font-semibold text-heading-md text-text-primary">SAHAAYA</span>
+              <span>
+                <span className="block font-heading font-semibold text-heading-sm text-white leading-none">SAHAAYA</span>
+                <span className="block text-[10px] tracking-[0.14em] text-primary-300/70 mt-1">OFFICER CONSOLE</span>
+              </span>
             </Link>
             <button
-              className="ml-auto lg:hidden p-2 rounded-lg hover:bg-secondary-100"
+              className="ml-auto lg:hidden p-2 rounded-lg text-white/60 hover:bg-white/10"
               onClick={() => toggleSidebar()}
               aria-label="Close sidebar"
             >
@@ -135,36 +216,65 @@ export default function DashboardLayout({
 
           {/* Navigation */}
           <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto" role="navigation" aria-label="Dashboard">
+            <p className="px-3 pb-2 text-[10px] font-medium tracking-[0.16em] text-white/30">MONITORING</p>
             {navigation.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+              const isActive = item.href === activeNavHref(pathname);
               return (
                 <Link
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-xl text-body-sm font-medium transition-colors',
+                    'relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-body-sm font-medium transition-all duration-200 group',
                     isActive
-                      ? 'bg-primary-50 text-primary-600'
-                      : 'text-text-secondary hover:bg-secondary-100 hover:text-text-primary'
+                      ? 'bg-white/[0.09] text-white'
+                      : 'text-white/55 hover:bg-white/[0.05] hover:text-white'
                   )}
                   aria-current={isActive ? 'page' : undefined}
                 >
-                  <item.icon className="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+                  {isActive && (
+                    <span
+                      className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[3px] rounded-r-full bg-primary-300"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <item.icon
+                    className={cn(
+                      'w-[18px] h-[18px] flex-shrink-0 transition-colors',
+                      isActive ? 'text-primary-300' : 'text-white/45 group-hover:text-white/80'
+                    )}
+                    aria-hidden="true"
+                  />
                   {item.name}
                 </Link>
               );
             })}
           </nav>
 
+          {/* Pipeline status */}
+          <div className="px-3 pb-3">
+            <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-distress-green opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-distress-green" />
+                </span>
+                <span className="text-[11px] font-medium text-white/70">Pipeline online</span>
+              </div>
+              <p className="text-[10px] text-white/35 leading-snug">
+                Synthetic prototype data · no real victim records
+              </p>
+            </div>
+          </div>
+
           {/* Bottom */}
-          <div className="p-3 border-t border-border">
-            <div className="flex items-center gap-3 px-3 py-2">
-              <div className="w-9 h-9 rounded-xl bg-primary-100 flex items-center justify-center">
-                <User className="w-5 h-5 text-primary-600" />
+          <div className="p-3 border-t border-white/10">
+            <div className="flex items-center gap-3 px-2 py-1.5">
+              <div className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center flex-shrink-0">
+                <User className="w-[18px] h-[18px] text-primary-300" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-body-sm font-medium text-text-primary truncate">{user?.name}</p>
-                <p className="text-caption text-text-muted capitalize">{user?.role?.replace('_', ' ')}</p>
+                <p className="text-body-sm font-medium text-white truncate">{user?.name}</p>
+                <p className="text-[11px] text-white/40 capitalize truncate">{user?.role?.replace('_', ' ')}</p>
               </div>
             </div>
           </div>
@@ -184,12 +294,21 @@ export default function DashboardLayout({
               >
                 <Menu className="w-5 h-5" />
               </button>
-              <h1 className="text-heading-lg font-semibold text-text-primary hidden sm:block">
-                {navigation.find((n) => pathname === n.href || pathname.startsWith(n.href + '/'))?.name || 'Dashboard'}
-              </h1>
+              <div className="hidden sm:flex items-center gap-2 text-body-sm">
+                <span className="text-text-muted">Console</span>
+                <span className="text-text-muted/50">/</span>
+                <span className="font-medium text-text-primary">
+                  {navigation.find((n) => n.href === activeNavHref(pathname))?.name || 'Dashboard'}
+                </span>
+              </div>
             </div>
 
             <div className="flex items-center gap-3">
+              <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary-50 border border-primary-100 text-primary-700 text-[11px] font-medium">
+                <Shield className="w-3.5 h-3.5" />
+                Human-in-the-loop enforced
+              </span>
+
               {/* Notifications */}
               <button onClick={enableNotifications} className="relative p-2 rounded-xl hover:bg-secondary-100 transition-colors" aria-label="Enable support notifications">
                 <Bell className="w-5 h-5 text-text-secondary" />

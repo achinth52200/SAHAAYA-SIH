@@ -184,7 +184,7 @@ export default function DistrictsPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filteredDistricts.map((district, i) => (
-                    <motion.tr key={district.district} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} className="hover:bg-secondary-50">
+                    <motion.tr key={`${district.state}:${district.district}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} className="hover:bg-secondary-50">
                       <td className="px-4 py-3 font-medium">
                         <Link href={`/dashboard/districts/${district.district}`} className="text-primary-500 hover:text-primary-600 flex items-center gap-1">
                           <Building2 className="w-4 h-4" />

@@ -1,0 +1,18 @@
+{
+  "name": "SAHAAYA Support Portal",
+  "short_name": "SAHAAYA",
+  "description": "Synthetic prototype victim support and human review portal.",
+  "start_url": "/login",
+  "display": "standalone",
+  "background_color": "#F6F5EF",
+  "theme_color": "#3E7C59",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

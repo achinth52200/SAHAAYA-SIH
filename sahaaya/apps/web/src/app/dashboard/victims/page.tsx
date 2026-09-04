@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
@@ -19,6 +19,7 @@ import {
   Button, Input, Select,
 } from '@/components/ui';
 import { cn, formatRelativeTime } from '@/lib/utils';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import type { VictimSummary } from '@/types';
 
 export default function VictimsPage() {
@@ -31,20 +32,24 @@ export default function VictimsPage() {
   const [sortBy, setSortBy] = useState<'latest_score' | 'latest_band' | 'trend' | 'risk'>('latest_score');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        const res = await api.getVictims();
-        setData(res.data);
-      } catch (error) {
-        console.error('Failed to load victims:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
+  const loadVictims = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
+    try {
+      const res = await api.getVictims();
+      setData(res.data);
+    } catch (error) {
+      console.error('Failed to load victims:', error);
+    } finally {
+      if (showSpinner) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadVictims();
+  }, [loadVictims]);
+
+  // Background refresh keeps scores current without flashing the loading skeleton.
+  useAutoRefresh(() => loadVictims(false), { intervalMs: 20000 });
 
   const filteredVictims = data
     .filter((v) => {
@@ -181,18 +186,27 @@ export default function VictimsPage() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <DistressBandBadge band={victim.latest_band as any} size="sm" showScore={victim.latest_score ?? undefined} />
+                        <DistressBandBadge band={victim.latest_band as any} size="sm" />
                       </td>
                       <td className="px-4 py-3">
                         <Badge variant={
                           victim.trend === 'worsening' ? 'red' :
                           victim.trend === 'improving' ? 'green' : 'gray'
-                        } size="sm">
-                          {victim.trend || '—'}
+                        } size="sm" dot>
+                          {victim.trend ? victim.trend.charAt(0).toUpperCase() + victim.trend.slice(1) : '—'}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-body-sm">
-                        {victim.escalation_probability_7d !== undefined ? `${Math.round(victim.escalation_probability_7d * 100)}%` : '—'}
+                      <td className="px-4 py-3 text-right">
+                        {victim.escalation_probability_7d !== undefined && victim.escalation_probability_7d !== null ? (
+                          <span className={cn(
+                            'font-heading font-semibold tabular-nums',
+                            victim.escalation_probability_7d >= 0.6 ? 'text-distress-orange' : 'text-text-primary'
+                          )}>
+                            {Math.round(victim.escalation_probability_7d * 100)}%
+                          </span>
+                        ) : (
+                          <span className="text-text-muted">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <Link href={`/dashboard/victims/${victim.victim_id}`}>

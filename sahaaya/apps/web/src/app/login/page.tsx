@@ -4,10 +4,12 @@ import { useState, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Leaf, Shield, Lock, User, Mail, Eye, EyeOff, Loader2, AlertTriangle } from 'lucide-react';
+import {
+  Leaf, Shield, Lock, User, Mail, Eye, EyeOff, AlertTriangle,
+  ArrowLeft, ArrowRight, ScanSearch, UserCheck, HeartHandshake,
+} from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
-import { api } from '@/lib/api';
-import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui';
+import { Button, Input } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
 function LoginForm() {
@@ -38,7 +40,11 @@ function LoginForm() {
         'victim@sahaaya.gov.in': { id: 'VICTIM_0001', role: 'victim' as const, name: 'Anonymous Victim' },
       };
 
-      const user = demoUsers[email as keyof typeof demoUsers];
+      const victimMatch = email.match(/^victim(\d*)@sahaaya\.gov\.in$/i);
+      const victimNumber = victimMatch ? Number(victimMatch[1] || '1') : 0;
+      const user = victimMatch && victimNumber >= 1 && victimNumber <= 25
+        ? { id: `VICTIM_${String(victimNumber).padStart(4, '0')}`, role: 'victim' as const, name: `Anonymous Victim ${victimNumber}` }
+        : demoUsers[email as keyof typeof demoUsers];
       if (user && password === 'demo123') {
         login(user);
         router.push(redirect || (user.role === 'victim' ? '/victim' : '/dashboard'));
@@ -53,101 +59,149 @@ function LoginForm() {
     }
   };
 
-  const demoAccounts = [
+  const officerAccounts = [
     { email: 'counsellor@sahaaya.gov.in', role: 'Counsellor', name: 'Dr. Priya Sharma' },
     { email: 'district@sahaaya.gov.in', role: 'District Officer', name: 'Officer Rajesh Kumar' },
     { email: 'state@sahaaya.gov.in', role: 'State Officer', name: 'Officer Anjali Patel' },
     { email: 'national@sahaaya.gov.in', role: 'National Admin', name: 'Director General' },
-    { email: 'victim@sahaaya.gov.in', role: 'Victim (Demo)', name: 'Anonymous Victim' },
   ];
 
+  const victimAccounts = [
+    { email: 'victim@sahaaya.gov.in', role: 'Survivor view', name: 'Anonymous Victim 1' },
+    { email: 'victim2@sahaaya.gov.in', role: 'Survivor view', name: 'Anonymous Victim 2' },
+    { email: 'victim3@sahaaya.gov.in', role: 'Survivor view', name: 'Anonymous Victim 3' },
+  ];
+
+  const fill = (account: { email: string }) => {
+    setEmail(account.email);
+    setPassword('demo123');
+    setError('');
+  };
+
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      {/* Background decoration */}
-      <div className="fixed inset-0 bg-gradient-to-br from-primary-50 via-background to-background" aria-hidden="true" />
-      <div className="fixed top-20 left-10 w-72 h-72 bg-primary-100/50 rounded-full blur-3xl" aria-hidden="true" />
-      <div className="fixed bottom-20 right-10 w-96 h-96 bg-primary-50/50 rounded-full blur-3xl" aria-hidden="true" />
+    <div className="min-h-screen lg:grid lg:grid-cols-[1.05fr_1fr]">
+      {/* ===== Brand panel ===== */}
+      <aside className="relative hidden lg:flex hero-dark grain overflow-hidden flex-col justify-between p-12">
+        <div className="absolute inset-0 grid-lines grid-fade" aria-hidden="true" />
+        <div className="aurora-blob animate-drift-slow w-[480px] h-[480px] -top-24 -left-16 bg-primary-500/25" aria-hidden="true" />
+        <div className="aurora-blob animate-drift-slower w-[420px] h-[420px] bottom-0 -right-20 bg-[#4E9E6B]/20" aria-hidden="true" />
 
-      <div className="relative w-full max-w-md">
-        {/* Logo */}
-        <motion.div
-          className="text-center mb-8"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <Link href="/" className="inline-flex items-center gap-2 mb-4" aria-label="SAHAAYA Home">
-            <div className="w-14 h-14 rounded-2xl bg-primary-500 flex items-center justify-center">
-              <Leaf className="w-8 h-8 text-white" />
+        <div className="relative">
+          <Link href="/" className="inline-flex items-center gap-2.5" aria-label="SAHAAYA home">
+            <div className="w-9 h-9 rounded-xl bg-primary-400 flex items-center justify-center">
+              <Leaf className="w-5 h-5 text-[#0B140F]" />
             </div>
-            <span className="font-heading font-bold text-display-sm text-text-primary">SAHAAYA</span>
+            <span className="font-heading font-semibold text-heading-md text-white">SAHAAYA</span>
           </Link>
-          <p className="text-body text-text-secondary">Sign in to access the dashboard</p>
-        </motion.div>
+        </div>
 
-        {/* Login Card */}
-        <motion.div
-          className="card p-8"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <CardHeader className="text-center pb-6">
-            <CardTitle>Welcome back</CardTitle>
-            <CardDescription>Enter your credentials to continue</CardDescription>
-          </CardHeader>
+        <div className="relative max-w-md">
+          <p className="text-[11px] font-mono tracking-[0.18em] text-primary-300/70 mb-5">OFFICER CONSOLE</p>
+          <h1 className="font-heading font-bold text-white text-[2.5rem] leading-[1.1] tracking-[-0.02em]">
+            The alert explains itself.
+            <br />
+            <span className="text-shine">You make the call.</span>
+          </h1>
+          <p className="mt-5 text-body text-white/55 leading-relaxed">
+            Every distress score you review arrives with its contributing factors, the person&apos;s own baseline,
+            and a decision that only a trained human can make.
+          </p>
 
-          <CardContent className="space-y-5">
+          <ul className="mt-9 space-y-4">
+            {[
+              { Icon: ScanSearch, text: 'Six signals fused into one explainable score' },
+              { Icon: UserCheck, text: 'No Orange or Red alert closes without a person' },
+              { Icon: Shield, text: 'Consent-gated, RBAC, fully audit-logged' },
+            ].map(({ Icon, text }) => (
+              <li key={text} className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-white/[0.07] border border-white/10">
+                  <Icon className="h-4 w-4 text-primary-300" />
+                </span>
+                <span className="text-body-sm text-white/70 leading-relaxed pt-1.5">{text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="relative flex items-center gap-2 text-[11px] text-white/35">
+          <span>Smart India Hackathon 2026 · PS 26094</span>
+          <span className="h-3 w-px bg-white/15" />
+          <span>Synthetic prototype data only</span>
+        </div>
+      </aside>
+
+      {/* ===== Form panel ===== */}
+      <main className="relative flex min-h-screen items-center justify-center bg-background px-4 py-10 sm:px-8">
+        <div className="w-full max-w-md">
+          <Link
+            href="/"
+            className="mb-8 inline-flex items-center gap-1.5 text-body-sm text-text-secondary transition-colors hover:text-text-primary lg:hidden"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to site
+          </Link>
+
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+            <div className="mb-8">
+              <h2 className="font-heading text-display-sm font-bold text-text-primary">Sign in</h2>
+              <p className="mt-1.5 text-body text-text-secondary">
+                Access the officer console for your role.
+              </p>
+            </div>
+
             {error && (
               <motion.div
-                className="alert alert-error"
-                initial={{ opacity: 0, y: -10 }}
+                className="mb-5 flex items-start gap-2.5 rounded-xl border border-distress-red/25 bg-distress-red/5 px-4 py-3"
+                initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
+                role="alert"
               >
-                <AlertTriangle className="w-5 h-5" />
-                <span>{error}</span>
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-distress-red" />
+                <span className="text-body-sm text-distress-red">{error}</span>
               </motion.div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <Input
                 label="Email"
                 type="email"
+                name="email"
                 placeholder="officer@sahaaya.gov.in"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoComplete="email"
-                leftIcon={<Mail className="w-5 h-5" />}
+                leftIcon={<Mail className="h-[18px] w-[18px]" />}
               />
 
               <div className="relative">
                 <Input
                   label="Password"
                   type={showPassword ? 'text' : 'password'}
+                  name="password"
                   placeholder="Enter password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   autoComplete="current-password"
-                  leftIcon={<Lock className="w-5 h-5" />}
+                  leftIcon={<Lock className="h-[18px] w-[18px]" />}
                 />
                 <button
                   type="button"
-                  className="absolute right-3 top-[38px] text-text-muted hover:text-text-primary"
+                  className="absolute right-3 top-[38px] text-text-muted transition-colors hover:text-text-primary"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
                 </button>
               </div>
 
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2 cursor-pointer">
+              <div className="flex items-center justify-between pt-1">
+                <label className="flex cursor-pointer items-center gap-2">
                   <input
                     type="checkbox"
                     checked={remember}
                     onChange={(e) => setRemember(e.target.checked)}
-                    className="w-4 h-4 rounded border-border text-primary-500 focus:ring-primary-500"
+                    className="h-4 w-4 rounded border-border text-primary-500 focus:ring-primary-500"
                   />
                   <span className="text-body-sm text-text-secondary">Remember me</span>
                 </label>
@@ -156,74 +210,80 @@ function LoginForm() {
                 </Link>
               </div>
 
-              <Button type="submit" fullWidth size="lg" loading={loading}>
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-                Sign In
+              <Button type="submit" fullWidth size="lg" loading={loading} className="mt-2">
+                Sign in
+                <ArrowRight className="h-[18px] w-[18px]" />
               </Button>
             </form>
 
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-border" />
+            {/* Demo accounts */}
+            <div className="mt-8">
+              <div className="mb-4 flex items-center gap-3">
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-caption text-text-muted">or use a demo account</span>
+                <span className="h-px flex-1 bg-border" />
               </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-surface text-text-muted">Or continue with demo account</span>
+
+              <p className="mb-2 text-[11px] font-medium tracking-[0.12em] text-text-muted">OFFICERS &amp; COUNSELLORS</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {officerAccounts.map((account) => (
+                  <button
+                    key={account.email}
+                    type="button"
+                    onClick={() => fill(account)}
+                    className={cn(
+                      'group flex items-center gap-2.5 rounded-xl border p-2.5 text-left transition-all duration-200',
+                      email === account.email
+                        ? 'border-primary-500 bg-primary-50'
+                        : 'border-border bg-surface hover:border-primary-200 hover:bg-secondary-50'
+                    )}
+                  >
+                    <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary-100">
+                      <User className="h-4 w-4 text-primary-600" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13px] font-medium text-text-primary">{account.name}</span>
+                      <span className="block truncate text-[11px] text-text-muted">{account.role}</span>
+                    </span>
+                  </button>
+                ))}
               </div>
-            </div>
 
-            {/* Demo Accounts */}
-            <div className="space-y-2">
-              {demoAccounts.map((account, i) => (
-                <motion.button
-                  key={account.email}
-                  type="button"
-                  onClick={() => {
-                    setEmail(account.email);
-                    setPassword('demo123');
-                  }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl border border-border bg-secondary-50 hover:bg-secondary-100 hover:border-primary-200 transition-all text-left"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.2 + i * 0.05 }}
-                >
-                  <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center flex-shrink-0">
-                    <User className="w-5 h-5 text-primary-500" />
-                  </div>
-                  <div className="flex-1 text-left min-w-0">
-                    <p className="text-body-sm font-medium text-text-primary truncate">{account.name}</p>
-                    <p className="text-caption text-text-muted">{account.role}</p>
-                  </div>
-                  <span className="text-caption text-text-muted">demo123</span>
-                </motion.button>
-              ))}
-            </div>
+              <p className="mb-2 mt-4 text-[11px] font-medium tracking-[0.12em] text-text-muted">SURVIVOR EXPERIENCE</p>
+              <div className="flex flex-wrap gap-2">
+                {victimAccounts.map((account, i) => (
+                  <button
+                    key={account.email}
+                    type="button"
+                    onClick={() => fill(account)}
+                    className={cn(
+                      'inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-[13px] transition-all duration-200',
+                      email === account.email
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-border bg-surface text-text-secondary hover:border-primary-200 hover:bg-secondary-50'
+                    )}
+                  >
+                    <HeartHandshake className="h-4 w-4 text-primary-500" />
+                    Victim {i + 1}
+                  </button>
+                ))}
+              </div>
 
-            <p className="text-center text-caption text-text-muted">
-              Demo mode — All data is synthetic prototype data
-            </p>
-          </CardContent>
-        </motion.div>
-
-        {/* Security notice */}
-        <motion.div
-          className="mt-6 p-4 rounded-xl bg-primary-50 border border-primary-100"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-        >
-          <div className="flex items-start gap-3">
-            <Shield className="w-5 h-5 text-primary-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium text-primary-700 mb-1">Secure Access</p>
-              <p className="text-body-sm text-primary-600">
-                This system uses token-based authentication with RBAC. All actions are audit-logged.
-                <br />
-                <span className="font-medium">Never share credentials.</span>
+              <p className="mt-4 text-center text-caption text-text-muted">
+                All demo accounts use the password <span className="font-mono text-text-secondary">demo123</span>
               </p>
             </div>
-          </div>
-        </motion.div>
-      </div>
+
+            <div className="mt-8 flex items-start gap-2.5 rounded-xl border border-border bg-secondary-50 px-4 py-3">
+              <Shield className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary-500" />
+              <p className="text-caption text-text-secondary leading-relaxed">
+                Token-based authentication with role-based access control. Every action in the console is audit-logged.
+                Never share credentials.
+              </p>
+            </div>
+          </motion.div>
+        </div>
+      </main>
     </div>
   );
 }
